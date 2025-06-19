@@ -1,56 +1,84 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import seaborn as sns
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from scipy import stats
+from sklearn.ensemble import IsolationForest
+from mpl_toolkits.mplot3d import Axes3D
 
-# Load the data
 fundamentals_merged = pd.read_csv('merged_fundamentals_securities.csv')
-sector_analysis = pd.read_csv('sector_analysis.csv')
 
-# Print columns for debugging
-print("\nColumns in fundamentals_merged:", fundamentals_merged.columns.tolist())
-print("\nColumns in sector_analysis:", sector_analysis.columns.tolist())
+# Calculate Net Margin if not present
+fundamentals_merged['Net Margin'] = fundamentals_merged['Net Income'] / fundamentals_merged['Total Revenue']
 
-# 1. Analyze high debt companies (using original data)
-if 'Long-Term Debt' in fundamentals_merged.columns and 'Total Equity' in fundamentals_merged.columns:
-    fundamentals_merged['Debt-to-Equity'] = fundamentals_merged['Long-Term Debt'] / fundamentals_merged['Total Equity']
-    high_debt = fundamentals_merged[fundamentals_merged['Debt-to-Equity'] > 2]  # Threshold = 2
-    
-    if not high_debt.empty:
-        print("\nCompanies with high debt-to-equity (>2):")
-        print(high_debt[['Ticker Symbol', 'Security', 'Debt-to-Equity']].drop_duplicates())
-    else:
-        print("\nNo companies found with debt-to-equity > 2")
-else:
-    print("\nRequired columns for debt analysis missing in fundamentals_merged")
+# Calculate Debt-to-Equity ratio
+fundamentals_merged['Debt-to-Equity'] = fundamentals_merged['Long-Term Debt'] / fundamentals_merged['Total Equity']
 
-# 2. Analyze income drops (using original data)
-if 'Net Income' in fundamentals_merged.columns and 'Ticker Symbol' in fundamentals_merged.columns:
-    fundamentals_merged = fundamentals_merged.sort_values(['Ticker Symbol', 'Period Ending'])
-    fundamentals_merged['Net Income Growth'] = fundamentals_merged.groupby('Ticker Symbol')['Net Income'].pct_change()
-    income_drops = fundamentals_merged[fundamentals_merged['Net Income Growth'] < -0.3]  # >30% drop
-    
-    if not income_drops.empty:
-        print("\nCompanies with significant income drops (>30%):")
-        print(income_drops[['Ticker Symbol', 'Security', 'Period Ending', 'Net Income', 'Net Income Growth']])
-    else:
-        print("\nNo companies found with >30% income drops")
-else:
-    print("\nRequired columns for income analysis missing in fundamentals_merged")
+# Verify Current Ratio exists (it does in your data)
+print("Current Ratio" in fundamentals_merged.columns)  # Should return True
 
-# 3. Visualizations (using sector analysis)
-plt.figure(figsize=(12, 6))
-sns.boxplot(data=sector_analysis, y='Average Debt-to-Equity', palette='coolwarm')
-plt.title('Sector-Wise Debt-to-Equity Ratio Distribution', fontsize=14)
-plt.ylabel('Average Debt-to-Equity Ratio', fontsize=12)
-plt.tight_layout()
-plt.savefig('sector_debt_to_equity_distribution.png') 
+# Select only rows where all required ratios exist
+X = fundamentals_merged[['Net Margin', 'Current Ratio', 'Debt-to-Equity']].dropna()
+
+# Proceed with Isolation Forest
+model = IsolationForest(contamination=0.05, random_state=42)
+model.fit(X)
+
+# Add results to dataframe
+fundamentals_merged.loc[X.index, 'Anomaly_Score'] = model.decision_function(X)
+fundamentals_merged.loc[X.index, 'Is_Anomaly'] = model.predict(X)
+
+# Show top anomalies
+anomalies = fundamentals_merged[fundamentals_merged['Is_Anomaly'] == -1]
+print(f"Found {len(anomalies)} anomalous companies")
+
+
+# Visualize anomalies in 3D space
+fig = plt.figure(figsize=(10, 8))
+ax = fig.add_subplot(111, projection='3d')
+
+# Plot normal points
+normal = fundamentals_merged[fundamentals_merged['Is_Anomaly'] == 1]
+ax.scatter(
+    normal['Net Margin'],
+    normal['Current Ratio'],
+    normal['Debt-to-Equity'],
+    c='blue',
+    label='Normal'
+)
+
+# Plot anomalies
+ax.scatter(
+    anomalies['Net Margin'],
+    anomalies['Current Ratio'],
+    anomalies['Debt-to-Equity'],
+    c='red',
+    label='Anomaly'
+)
+
+ax.set_xlabel('Net Margin')
+ax.set_ylabel('Current Ratio')
+ax.set_zlabel('Debt-to-Equity')
+plt.title('Financial Anomalies in 3D Space')
+plt.legend()
+plt.savefig('financial_anomalies_3d.png')
 plt.show()
 
-# Save results
-if 'high_debt' in locals() and not high_debt.empty:
-    high_debt.to_csv('high_debt_companies.csv', index=False)
-if 'income_drops' in locals() and not income_drops.empty:
-    income_drops.to_csv('income_drops_companies.csv', index=False)
+# Display key info about anomalies
+anomaly_report = anomalies[[
+    'Ticker Symbol', 
+    'Security',
+    'GICS Sector',
+    'Net Margin',
+    'Current Ratio',
+    'Debt-to-Equity',
+    'Total Revenue'
+]].sort_values('Net Margin')
 
-print("\nAnalysis complete. Results saved to CSV files where applicable.")
+print(anomaly_report.head(10))
+# Save anomalies to CSV
+anomaly_report.to_csv('financial_anomalies_report.csv', index=False)
+# Save the updated fundamentals data with anomaly scores
+fundamentals_merged.to_csv('fundamentals_with_anomalies.csv', index=False)
+print("Anomaly detection completed and results saved.")
