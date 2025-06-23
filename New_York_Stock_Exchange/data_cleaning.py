@@ -24,3 +24,8 @@ price_split = ld.price_split[ld.price_split['symbol'].isin(valid_tickers)].copy(
 print("Data cleaning completed successfully!")
 print(f"Fundamentals shape: {fundamentals.shape}")
 print(f"Prices split-adjusted shape: {price_split.shape}")
+
+# save cleaned data
+fundamentals.to_csv('cleaned_fundamentals.csv', index=False)
+securities.to_csv('cleaned_securities.csv', index=False)
+price_split.to_csv('cleaned_price_split.csv', index=False)
