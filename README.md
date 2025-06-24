@@ -1,5 +1,5 @@
 # 💼 NYSE Financial Health Analysis 
-*Data-Driven Insights for Smarter Investment Decisions*
+*Data-Driven Insights for Smarter Investment Decisions [RAW DATA](https://www.kaggle.com/datasets/dgawlik/nyse)*
 
 ## 🔍 What I Achieved
 - Identified **23 high-risk companies** before market downturn
